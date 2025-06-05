@@ -70,5 +70,51 @@ def registrar_mensaje():
     conn.close()
     return jsonify({"status": "mensaje registrado"})
 
+@app.route('/confirmar', methods=['POST'])
+def confirmar():
+    try:
+        data = request.get_json()
+        nombre_yape = data.get('nombre_yape')
+        producto = data.get('producto')
+
+        if not nombre_yape or not producto:
+            return jsonify({"status": "faltan datos"}), 400
+
+        conn = get_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT m.id, p.id 
+            FROM mensajes m 
+            JOIN pedidos p ON m.nombre = p.nombre_yape 
+            WHERE m.estado = 'pendiente' AND p.estado != 'confirmado' 
+            AND p.producto = %s AND p.nombre_yape = %s
+            LIMIT 1
+        """, (producto, nombre_yape))
+        resultado = cur.fetchone()
+
+        if resultado:
+            mensaje_id, pedido_id = resultado
+
+            cur.execute("UPDATE mensajes SET estado = 'usado' WHERE id = %s", (mensaje_id,))
+            cur.execute("UPDATE pedidos SET estado = 'confirmado' WHERE id = %s", (pedido_id,))
+            cur.execute("""
+                INSERT INTO confirmaciones (pedido_id, mensaje_id, producto, estado)
+                VALUES (%s, %s, %s, %s)
+            """, (pedido_id, mensaje_id, producto, "confirmado"))
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            return jsonify({"status": "confirmado"}), 200
+        else:
+            return jsonify({"status": "no encontrado o ya confirmado"}), 404
+
+    except Exception as e:
+        print("❌ Error en confirmación:", e)
+        return jsonify({"status": "error", "detalle": str(e)}), 500
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
