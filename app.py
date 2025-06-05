@@ -76,26 +76,30 @@ def confirmar():
         data = request.get_json()
         nombre_yape = data.get('nombre_yape')
         producto = data.get('producto')
+        monto = data.get('monto')
 
-        if not nombre_yape or not producto:
+        if not nombre_yape or not producto or monto is None:
             return jsonify({"status": "faltan datos"}), 400
 
         conn = get_connection()
         cur = conn.cursor()
 
+        # Buscar coincidencia total: nombre, producto, estado y monto exacto
         cur.execute("""
             SELECT m.id, p.id 
             FROM mensajes m 
             JOIN pedidos p ON m.nombre = p.nombre_yape 
-            WHERE m.estado = 'pendiente' AND p.estado != 'confirmado' 
-            AND p.producto = %s AND p.nombre_yape = %s
+            WHERE m.estado = 'pendiente' AND p.estado != 'confirmado'
+            AND p.producto = %s AND p.nombre_yape = %s AND m.monto = p.monto AND m.monto = %s
             LIMIT 1
-        """, (producto, nombre_yape))
+        """, (producto, nombre_yape, monto))
+
         resultado = cur.fetchone()
 
         if resultado:
             mensaje_id, pedido_id = resultado
 
+            # Confirmar ambos
             cur.execute("UPDATE mensajes SET estado = 'usado' WHERE id = %s", (mensaje_id,))
             cur.execute("UPDATE pedidos SET estado = 'confirmado' WHERE id = %s", (pedido_id,))
             cur.execute("""
@@ -109,7 +113,7 @@ def confirmar():
 
             return jsonify({"status": "confirmado"}), 200
         else:
-            return jsonify({"status": "no encontrado o ya confirmado"}), 404
+            return jsonify({"status": "no encontrado o monto incorrecto"}), 404
 
     except Exception as e:
         print("❌ Error en confirmación:", e)
